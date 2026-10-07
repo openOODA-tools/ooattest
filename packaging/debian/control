@@ -1,0 +1,14 @@
+Source: ooattest
+Section: utils
+Priority: optional
+Maintainer: openOODA-tools <ops@openooda.org>
+Standards-Version: 4.6.2
+Build-Depends: debhelper-compat (= 13)
+
+Package: ooattest
+Architecture: amd64
+Depends: libc6
+Description: TPM ATTESTATION
+ Attests system state and measured boot hashes using TPM2 hardware security chips.
+ Capability-bounded openOODA utility with zero ambient authority,
+ oote theme palettes, and native Model Context Protocol (MCP) surface.
