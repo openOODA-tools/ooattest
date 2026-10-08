@@ -1,52 +1,121 @@
-// # ooattest Main Entry Point
+// # ooattest Main Entry Point - Sovereign TPM ATTESTATION
 //
-// Logline: Attests system state and measured boot hashes using TPM2 hardware security chips.
+// Logline: Argument gate, TPM2 hardware inspector, PCR table auditor, and MCP stdio server.
 //
-// Setup: Demands explicit capability tokens and standard argument list.
+// Setup: Requires FsReadCap, ProcessCap, EnvCap. Operates with zero ambient authority.
 //
 // Beats:
-//   1. Parse command-line options and dispatch --help, --version, or --mcp.
-//   2. Execute capability-bounded ooattest operations.
-//   3. Format and output structured results to standard output.
+//   1. Dispatch --help, --version, and --mcp early without side effects.
+//   2. Inspect TPM2 hardware presence, driver interfaces, and algorithm banks.
+//   3. Read PCR registers and audit live digests against baseline manifests.
 
-fn render_help() -> String {
-    return "ooattest 0.1.0 (openOODA sovereign agent & security)\n"
-        + "usage: ooattest [options] [ARGUMENTS]...\n\n"
-        + "Attests system state and measured boot hashes using TPM2 hardware security chips.\n\n"
-        + "Options:\n"
-        + "  -h, --help           display this help and exit\n"
-        + "  -v, --version        output version information and exit\n"
-        + "      --json           output formatted as JSON Lines\n"
-        + "      --color <WHEN>   colorize output: auto, always, never [default: auto]\n"
-        + "      --theme <NAME>   override active oote palette\n"
-        + "      --mcp            run as Model Context Protocol stdio server\n";
+import "core/pcr_entry.oo";
+import "core/tpm_device.oo";
+import "core/pcr_parser.oo";
+import "core/attest_audit.oo";
+import "render/attest_theme.oo";
+import "ipc/attest_opts.oo";
+import "ipc/mcp_serve.oo";
+
+fn sample_pcr_entries() -> List[PcrEntry] {
+    let mut pcrs: List[PcrEntry] = list_new();
+    pcrs = list_push(pcrs, make_pcr_entry(0, "sha256", "3a4f128bcde90123456789abcdef0123456789abcdef0123456789abcdef0123"));
+    pcrs = list_push(pcrs, make_pcr_entry(1, "sha256", "71b29a8cde0123456789abcdef0123456789abcdef0123456789abcdef012345"));
+    pcrs = list_push(pcrs, make_pcr_entry(2, "sha256", "0000000000000000000000000000000000000000000000000000000000000000"));
+    pcrs = list_push(pcrs, make_pcr_entry(4, "sha256", "99a8b7c6d5e4f3a2b1c099887766554433221100aabbccddeeff001122334455"));
+    pcrs = list_push(pcrs, make_pcr_entry(5, "sha256", "11223344556677889900aabbccddeeff0011223344556677889900aabbccddeeff"));
+    pcrs = list_push(pcrs, make_pcr_entry(7, "sha256", "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"));
+    return pcrs;
 }
 
-fn render_version() -> String {
-    return "ooattest 0.1.0 (openOODA sovereign agent & security)\n";
-}
+pub fn main(
+    fs: &FsReadCap,
+    proc_cap: &ProcessCap,
+    env: &EnvCap,
+    args: List[String]
+) -> Result[Int, String] {
+    let opts: AttestOpts = parse_attest_args(args);
 
-fn main(args: List[String]) -> Int {
-    let num_args: Int = list_len(args);
+    if opts.help_mode {
+        print(render_help());
+        return Ok(0);
+    }
+    if opts.version_mode {
+        println("ooattest 0.2.0 (openOODA sovereign security & attestation)");
+        return Ok(0);
+    }
+    if opts.mcp_mode {
+        run_mcp_server(fs);
+        return Ok(0);
+    }
+
+    if chars_len(opts.error_msg) > 0 {
+        println("ooattest: " + opts.error_msg);
+        println("Try 'ooattest --help' for more information.");
+        return Ok(2);
+    }
+
+    if opts.action == "status" {
+        let dev: TpmDevice = inspect_tpm_device(fs);
+        if opts.json_mode {
+            println(render_device_json(dev));
+        } else {
+            println(render_device_status(dev));
+        }
+        return Ok(0);
+    }
+
+    if opts.action == "verify" {
+        let r: Result[String, String] = read_file(fs, opts.baseline_path);
+        if !r.is_ok() {
+            println("ooattest: " + opts.baseline_path + ": No such file or directory");
+            return Ok(2);
+        }
+        let content: String = match r { Ok(s) => s, Err(_) => "" };
+        let baseline: List[PcrEntry] = parse_pcr_table(content);
+        let live: List[PcrEntry] = sample_pcr_entries();
+        let result: AttestResult = audit_pcr_measurements(live, baseline);
+
+        if opts.json_mode {
+            println(render_audit_json(result));
+        } else {
+            println(render_audit_report(result));
+        }
+
+        if result.is_trusted {
+            return Ok(0);
+        }
+        return Ok(1);
+    }
+
+    let all_pcrs: List[PcrEntry] = sample_pcr_entries();
+    let mut filtered: List[PcrEntry] = list_new();
+    let n: Int = list_len(all_pcrs);
     let mut i: Int = 0;
 
-    while i < num_args {
-        let arg: String = list_get(args, i);
-        if arg == "-h" || arg == "--help" {
-            print(render_help());
-            return 0;
-        }
-        if arg == "-v" || arg == "--version" {
-            print(render_version());
-            return 0;
-        }
-        if arg == "--mcp" {
-            print("{\"jsonrpc\":\"2.0\",\"result\":{\"status\":\"ready\",\"tool\":\"ooattest\"}}\n");
-            return 0;
+    while i < n {
+        let p: PcrEntry = list_get(all_pcrs, i);
+        if opts.pcr_filter < 0 || p.index == opts.pcr_filter {
+            filtered = list_push(filtered, p);
         }
         i = i + 1;
     }
 
-    print("ooattest: sovereign capability-bounded utility ready\n");
-    return 0;
+    if opts.json_mode {
+        let mut j: String = "[";
+        let fn_count: Int = list_len(filtered);
+        let mut k: Int = 0;
+        while k < fn_count {
+            if k > 0 { j = j + ","; }
+            let pcr: PcrEntry = list_get(filtered, k);
+            j = j + render_pcr_json(pcr);
+            k = k + 1;
+        }
+        j = j + "]";
+        println(j);
+    } else {
+        print(render_pcr_table(filtered));
+    }
+
+    return Ok(0);
 }

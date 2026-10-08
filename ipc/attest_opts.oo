@@ -1,0 +1,122 @@
+// # CLI Option Parser for ooattest
+//
+// Logline: Parses command-line arguments for TPM2 status queries, PCR dumps, and attestation audits.
+//
+// Setup: Pure string list processor without ambient side effects.
+//
+// Beats:
+//   1. Identify hardware status, register inspection, and baseline verification actions.
+//   2. Extract optional baseline manifest paths and PCR index filters.
+//   3. Dispatch help, version, and Model Context Protocol activation modes.
+
+pub type AttestOpts = struct {
+    action: String,
+    baseline_path: String,
+    pcr_filter: Int,
+    json_mode: Bool,
+    mcp_mode: Bool,
+    help_mode: Bool,
+    version_mode: Bool,
+    error_msg: String
+};
+
+fn parse_int_safe(s: String, default_val: Int) -> Int {
+    let n: Int = chars_len(s);
+    if n == 0 { return default_val; }
+    let mut acc: Int = 0;
+    let mut i: Int = 0;
+    while i < n {
+        let b: Int = byte_at(s, i);
+        if b < 48 || b > 57 { return default_val; }
+        acc = acc * 10 + (b - 48);
+        i = i + 1;
+    }
+    return acc;
+}
+
+pub fn default_opts() -> AttestOpts {
+    return AttestOpts {
+        action: "pcrs",
+        baseline_path: "",
+        pcr_filter: -1,
+        json_mode: false,
+        mcp_mode: false,
+        help_mode: false,
+        version_mode: false,
+        error_msg: ""
+    };
+}
+
+pub fn parse_attest_args(args: List[String]) -> AttestOpts {
+    let mut opts: AttestOpts = default_opts();
+    let n: Int = list_len(args);
+    let mut positional: List[String] = list_new();
+    let mut i: Int = 0;
+
+    while i < n {
+        let arg: String = list_get(args, i);
+
+        if arg == "-h" || arg == "--help" {
+            opts.help_mode = true;
+            return opts;
+        } else if arg == "-v" || arg == "--version" {
+            opts.version_mode = true;
+            return opts;
+        } else if arg == "--mcp" {
+            opts.mcp_mode = true;
+            return opts;
+        } else if arg == "-s" || arg == "--status" {
+            opts.action = "status";
+        } else if arg == "-p" || arg == "--pcrs" {
+            opts.action = "pcrs";
+        } else if arg == "-j" || arg == "--json" {
+            opts.json_mode = true;
+        } else if arg == "-a" || arg == "--audit" || arg == "--verify" {
+            opts.action = "verify";
+            if i + 1 < n {
+                i = i + 1;
+                opts.baseline_path = list_get(args, i);
+            } else {
+                opts.error_msg = "Option " + arg + " requires a baseline manifest file path";
+                return opts;
+            }
+        } else if arg == "--pcr" {
+            if i + 1 < n {
+                i = i + 1;
+                opts.pcr_filter = parse_int_safe(list_get(args, i), -1);
+            } else {
+                opts.error_msg = "Option --pcr requires a register index";
+                return opts;
+            }
+        } else if str_starts_with(arg, "-") {
+            opts.error_msg = "Unknown option: " + arg;
+            return opts;
+        } else {
+            positional = list_push(positional, arg);
+        }
+        i = i + 1;
+    }
+
+    let pos_len: Int = list_len(positional);
+    if pos_len > 0 && chars_len(opts.baseline_path) == 0 {
+        opts.action = "verify";
+        opts.baseline_path = list_get(positional, 0);
+    }
+
+    return opts;
+}
+
+pub fn render_help() -> String {
+    return "Usage: ooattest [OPTIONS] [BASELINE_MANIFEST]\n\n" +
+        "Attests system state and measured boot hashes using TPM2 hardware security chips.\n\n" +
+        "Commands & Operations:\n" +
+        "  -p, --pcrs               Read and display measured PCR digest table (default)\n" +
+        "  -s, --status             Inspect TPM2 hardware chip presence, driver, and banks\n" +
+        "  -a, --verify <FILE>      Audit live PCRs against expected golden baseline manifest\n" +
+        "      --pcr <INDEX>        Filter inspection to specific register index (0-23)\n\n" +
+        "Options:\n" +
+        "  -j, --json               Output records and verdicts formatted as JSON\n" +
+        "      --mcp                Run as Model Context Protocol stdio server\n" +
+        "  -v, --version            Output version information and exit\n" +
+        "  -h, --help               Display this help and exit\n";
+}

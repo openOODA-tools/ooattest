@@ -1,0 +1,19 @@
+// # ooattest Core Subsystem Anchor
+//
+// Logline: Consolidates PCR register models, device inspectors, parsers, and attestation auditors.
+//
+// Setup: Root barrel shim for core TPM2 attestation domain.
+//
+// Beats:
+//   1. Re-export PcrEntry models and standard TCG architectural role mappings.
+//   2. Re-export TPM2 sysfs and character device hardware inspectors.
+//   3. Re-export PCR table parsers and cryptographic baseline attestation auditors.
+
+import "core/pcr_entry.oo";
+import "core/tpm_device.oo";
+import "core/pcr_parser.oo";
+import "core/attest_audit.oo";
+
+pub fn core_version() -> String {
+    return "0.2.0";
+}

@@ -1,0 +1,16 @@
+// # Render Anchor Module
+//
+// Logline: Re-exports render formatting and terminal presentation facilities.
+//
+// Setup: Pure anchor re-exporting rendering components.
+//
+// Beats:
+//   1. Re-export PCR register table formatting functions.
+//   2. Re-export hardware device status and audit report renderers.
+//   3. Re-export JSON serializers for PCR entries, devices, and attestation results.
+
+import "render/attest_theme.oo";
+
+pub fn render_version() -> String {
+    return "0.2.0";
+}

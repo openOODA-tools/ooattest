@@ -1,0 +1,11 @@
+Package: ooattest
+Version: 0.2.0-1
+Section: utils
+Priority: optional
+Architecture: amd64
+Maintainer: openOODA-tools <ops@openooda.org>
+Depends: libc6
+Description: TPM ATTESTATION
+ Attests system state and measured boot hashes using TPM2 hardware security chips.
+ Capability-bounded openOODA utility with zero ambient authority,
+ PCR measurement verification, and native Model Context Protocol (MCP) surface.

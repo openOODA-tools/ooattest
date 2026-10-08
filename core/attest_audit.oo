@@ -1,0 +1,102 @@
+// # TPM2 Attestation and Measurement Audit
+//
+// Logline: Audits live PCR digest values against expected cryptographic baseline manifests.
+//
+// Setup: Pure record processor verifying platform measured boot state.
+//
+// Beats:
+//   1. Validate cryptographic digest lengths for SHA-256 and SHA-1 banks.
+//   2. Compare live PCR register banks against expected golden reference values.
+//   3. Aggregate trust status, matching count, and detected measurement drifts.
+
+import "core/pcr_entry.oo";
+
+pub type AttestResult = struct {
+    total_pcrs: Int,
+    matched_pcrs: Int,
+    drifted_pcrs: Int,
+    is_trusted: Bool,
+    notes: String
+};
+
+pub fn clean_hex_digest(digest: String) -> String {
+    let mut clean: String = "";
+    let n: Int = chars_len(digest);
+    let mut i: Int = 0;
+    while i < n {
+        let c: String = char_at(digest, i);
+        let b: Int = byte_at(digest, i);
+        let is_hex: Bool = (b >= 48 && b <= 57) || (b >= 97 && b <= 102) || (b >= 65 && b <= 70);
+        if is_hex {
+            clean = clean + c;
+        }
+        i = i + 1;
+    }
+    return clean;
+}
+
+pub fn is_valid_hex_digest(digest: String) -> Bool {
+    let clean: String = clean_hex_digest(digest);
+    let n: Int = chars_len(clean);
+    return n == 64 || n == 40 || n == 96;
+}
+
+fn find_pcr_by_index(index: Int, list: List[PcrEntry]) -> PcrEntry {
+    let n: Int = list_len(list);
+    let mut i: Int = 0;
+    while i < n {
+        let p: PcrEntry = list_get(list, i);
+        if p.index == index {
+            return p;
+        }
+        i = i + 1;
+    }
+    return make_pcr_entry(-1, "unknown", "");
+}
+
+pub fn audit_pcr_measurements(current: List[PcrEntry], baseline: List[PcrEntry]) -> AttestResult {
+    let n_base: Int = list_len(baseline);
+    if n_base == 0 {
+        return AttestResult {
+            total_pcrs: list_len(current),
+            matched_pcrs: 0,
+            drifted_pcrs: 0,
+            is_trusted: true,
+            notes: "No baseline manifest provided; displaying live register measurements"
+        };
+    }
+
+    let mut matched: Int = 0;
+    let mut drifted: Int = 0;
+    let mut i: Int = 0;
+
+    while i < n_base {
+        let b_pcr: PcrEntry = list_get(baseline, i);
+        let c_pcr: PcrEntry = find_pcr_by_index(b_pcr.index, current);
+        if c_pcr.index >= 0 {
+            if c_pcr.digest == b_pcr.digest {
+                matched = matched + 1;
+            } else {
+                drifted = drifted + 1;
+            }
+        } else {
+            drifted = drifted + 1;
+        }
+        i = i + 1;
+    }
+
+    let trusted: Bool = drifted == 0;
+    let note: String = if trusted {
+        "All " + to_string(matched) + " baseline PCRs verified successfully against TPM2 registers."
+    } else {
+        "ATTENTION: " + to_string(drifted) + " measured PCRs have drifted from baseline manifest!"
+    };
+
+    return AttestResult {
+        total_pcrs: n_base,
+        matched_pcrs: matched,
+        drifted_pcrs: drifted,
+        is_trusted: trusted,
+        notes: note
+    };
+}

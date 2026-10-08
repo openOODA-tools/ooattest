@@ -1,0 +1,99 @@
+// # PCR Table and Digest Parser
+//
+// Logline: Parses measured boot log outputs and sysfs PCR dumps into structured PcrEntry lists.
+//
+// Setup: Pure string parser without ambient authority.
+//
+// Beats:
+//   1. Split PCR output streams into discrete register records.
+//   2. Extract bank algorithm, PCR index integer, and raw digest string.
+//   3. Construct validated collection of PcrEntry records.
+
+import "core/pcr_entry.oo";
+
+fn parse_int_safe(s: String, default_val: Int) -> Int {
+    let n: Int = chars_len(s);
+    if n == 0 { return default_val; }
+    let mut acc: Int = 0;
+    let mut i: Int = 0;
+    while i < n {
+        let b: Int = byte_at(s, i);
+        if b < 48 || b > 57 { return default_val; }
+        acc = acc * 10 + (b - 48);
+        i = i + 1;
+    }
+    return acc;
+}
+
+fn split_lines(content: String) -> List[String] {
+    let mut lines: List[String] = list_new();
+    let n: Int = chars_len(content);
+    let mut cur: String = "";
+    let mut i: Int = 0;
+    while i < n {
+        let c: String = char_at(content, i);
+        if c == "\n" {
+            lines = list_push(lines, cur);
+            cur = "";
+        } else if c != "\r" {
+            cur = cur + c;
+        }
+        i = i + 1;
+    }
+    if chars_len(cur) > 0 {
+        lines = list_push(lines, cur);
+    }
+    return lines;
+}
+
+pub fn parse_pcr_line(line: String) -> PcrEntry {
+    let trimmed: String = str_trim(line);
+    let mut bank: String = "sha256";
+    let mut idx: Int = 0;
+    let mut digest: String = "";
+
+    if str_contains(trimmed, ":") {
+        let colon_pos: Int = 0;
+        let n: Int = chars_len(trimmed);
+        let mut k: Int = 0;
+        while k < n && char_at(trimmed, k) != ":" {
+            k = k + 1;
+        }
+        let prefix: String = str_trim(str_slice(trimmed, 0, k));
+        let rest: String = if k + 1 < n { str_trim(str_slice(trimmed, k + 1, n)) } else { "" };
+
+        if str_starts_with(prefix, "PCR-") {
+            let num_part: String = str_slice(prefix, 4, chars_len(prefix));
+            idx = parse_int_safe(num_part, 0);
+            digest = rest;
+        } else if str_starts_with(prefix, "PCR ") {
+            let num_part: String = str_slice(prefix, 4, chars_len(prefix));
+            idx = parse_int_safe(num_part, 0);
+            digest = rest;
+        } else {
+            idx = parse_int_safe(prefix, 0);
+            digest = rest;
+        }
+    }
+
+    return make_pcr_entry(idx, bank, digest);
+}
+
+pub fn parse_pcr_table(content: String) -> List[PcrEntry] {
+    let lines: List[String] = split_lines(content);
+    let mut entries: List[PcrEntry] = list_new();
+    let n: Int = list_len(lines);
+    let mut i: Int = 0;
+
+    while i < n {
+        let line: String = list_get(lines, i);
+        let trimmed: String = str_trim(line);
+        if chars_len(trimmed) > 0 && str_contains(trimmed, ":") {
+            let entry: PcrEntry = parse_pcr_line(trimmed);
+            entries = list_push(entries, entry);
+        }
+        i = i + 1;
+    }
+
+    return entries;
+}

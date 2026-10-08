@@ -1,7 +1,7 @@
 # Maintainer: openOODA-tools <ops@openooda.org>
 pkgname=ooattest-bin
 _pkgname=ooattest
-pkgver=0.1.0
+pkgver=0.2.0
 pkgrel=1
 pkgdesc="Attests system state and measured boot hashes using TPM2 hardware security chips."
 arch=('x86_64')

@@ -1,0 +1,18 @@
+// # IPC Anchor Module
+//
+// Logline: Consolidates and re-exports argument parsing and MCP server subsystems.
+//
+// Setup: Root barrel shim for ooattest IPC and CLI domain.
+//
+// Beats:
+//   1. Re-export JSON field parsing and string escaping utilities.
+//   2. Re-export CLI invocation options and help screen formatters.
+//   3. Re-export Model Context Protocol (MCP) stdio server implementation.
+
+import "ipc/json_field.oo";
+import "ipc/attest_opts.oo";
+import "ipc/mcp_serve.oo";
+
+pub fn ipc_version() -> String {
+    return "0.2.0";
+}

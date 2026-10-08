@@ -1,0 +1,61 @@
+// # TPM2 Platform Configuration Register Model
+//
+// Logline: Data structures and role descriptions for TPM2 PCR digest entries.
+//
+// Setup: Pure record definitions mapping measured boot registers to standard roles.
+//
+// Beats:
+//   1. Define PcrEntry model capturing bank algorithm, index, digest, and role.
+//   2. Map standard TCG PC Client PCR indices 0-23 to architectural roles.
+//   3. Provide hex digest sanitization and zero-value detectors.
+
+pub type PcrEntry = struct {
+    index: Int,
+    bank: String,
+    digest: String,
+    role: String,
+    is_zero: Bool
+};
+
+pub fn pcr_role_description(index: Int) -> String {
+    if index == 0 { return "CRTM, BIOS, and Firmware Code"; }
+    if index == 1 { return "Platform & Motherboard Configuration"; }
+    if index == 2 { return "UEFI Drivers & Option ROM Code"; }
+    if index == 3 { return "Option ROM Configuration & Data"; }
+    if index == 4 { return "UEFI Boot Manager & IPL Code"; }
+    if index == 5 { return "GPT Partition Table & Boot Config"; }
+    if index == 6 { return "State Transitions & Platform Resume"; }
+    if index == 7 { return "Secure Boot Policy & Certificates"; }
+    if index == 8 { return "Operating System Kernel Command Line"; }
+    if index == 9 { return "Initramfs & OS Kernel Measurements"; }
+    if index == 10 { return "IMA Measurement & Integrity Log"; }
+    if index == 14 { return "MOK / Shim Signing Certificates"; }
+    if index == 15 { return "Systemd Kernel-Command Extension"; }
+    return "System / Dynamic Measurement Slot #" + to_string(index);
+}
+
+pub fn is_zero_digest(digest: String) -> Bool {
+    let n: Int = chars_len(digest);
+    if n == 0 { return true; }
+    let mut i: Int = 0;
+    while i < n {
+        let c: String = char_at(digest, i);
+        if c != "0" && c != "x" && c != ":" && c != " " {
+            return false;
+        }
+        i = i + 1;
+    }
+    return true;
+}
+
+pub fn make_pcr_entry(index: Int, bank: String, digest: String) -> PcrEntry {
+    let zero: Bool = is_zero_digest(digest);
+    let desc: String = pcr_role_description(index);
+    return PcrEntry {
+        index: index,
+        bank: bank,
+        digest: digest,
+        role: desc,
+        is_zero: zero
+    };
+}

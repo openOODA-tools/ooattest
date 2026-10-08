@@ -1,0 +1,108 @@
+// # ooattest Terminal and JSON Formatter
+//
+// Logline: Formats TPM2 status reports, PCR register tables, and JSON envelopes.
+//
+// Setup: Pure string formatter without ambient side effects.
+//
+// Beats:
+//   1. Format hardware status and active cryptographic algorithm banks.
+//   2. Render tabular representations of measured PCR digest registers.
+//   3. Serialize PCR states and attestation audits into structured JSON.
+
+import "core/pcr_entry.oo";
+import "core/tpm_device.oo";
+import "core/attest_audit.oo";
+
+pub fn escape_json(s: String) -> String {
+    let mut out: String = "";
+    let n: Int = chars_len(s);
+    let mut i: Int = 0;
+    while i < n {
+        let c: String = char_at(s, i);
+        if c == "\\" {
+            out = out + "\\\\";
+        } else if c == "\"" {
+            out = out + "\\\"";
+        } else if c == "\n" {
+            out = out + "\\n";
+        } else if c == "\r" {
+            out = out + "\\r";
+        } else if c == "\t" {
+            out = out + "\\t";
+        } else {
+            out = out + c;
+        }
+        i = i + 1;
+    }
+    return out;
+}
+
+pub fn render_pcr_row(pcr: PcrEntry) -> String {
+    let num_str: String = if pcr.index < 10 { "0" + to_string(pcr.index) } else { to_string(pcr.index) };
+    return "PCR-" + num_str + " [" + pcr.bank + "]: " + pcr.digest + "\n  Role: " + pcr.role;
+}
+
+pub fn render_pcr_table(pcrs: List[PcrEntry]) -> String {
+    let n: Int = list_len(pcrs);
+    if n == 0 {
+        return "No measured PCR registers available.";
+    }
+    let mut out: String = "=== TPM2 Measured Boot Registers (Platform Configuration Registers) ===\n\n";
+    let mut i: Int = 0;
+    while i < n {
+        let pcr: PcrEntry = list_get(pcrs, i);
+        out = out + render_pcr_row(pcr) + "\n";
+        i = i + 1;
+    }
+    return out;
+}
+
+pub fn render_device_status(dev: TpmDevice) -> String {
+    let mut out: String = "=== TPM2 Hardware Security Chip Status ===\n";
+    out = out + "Present:      " + (if dev.present { "YES (Active)" } else { "NO (Not Detected)" }) + "\n";
+    out = out + "Device:       " + dev.device_path + "\n";
+    out = out + "Specification: TPM " + dev.tpm_version + "\n";
+    out = out + "Manufacturer: " + dev.manufacturer + "\n";
+    out = out + "Active Banks: " + dev.banks;
+    return out;
+}
+
+pub fn render_audit_report(res: AttestResult) -> String {
+    let mut out: String = "=== Platform Integrity Attestation Verdict ===\n";
+    out = out + "Status:       " + (if res.is_trusted { "TRUSTED (MATCH)" } else { "TAMPERED / DRIFTED" }) + "\n";
+    out = out + "Total PCRs:   " + to_string(res.total_pcrs) + "\n";
+    out = out + "Matched:      " + to_string(res.matched_pcrs) + "\n";
+    out = out + "Drifted:      " + to_string(res.drifted_pcrs) + "\n";
+    out = out + "Notes:        " + res.notes;
+    return out;
+}
+
+pub fn render_pcr_json(pcr: PcrEntry) -> String {
+    let mut j: String = "{";
+    j = j + "\"index\":" + to_string(pcr.index) + ",";
+    j = j + "\"bank\":\"" + escape_json(pcr.bank) + "\",";
+    j = j + "\"digest\":\"" + escape_json(pcr.digest) + "\",";
+    j = j + "\"role\":\"" + escape_json(pcr.role) + "\",";
+    j = j + "\"is_zero\":" + (if pcr.is_zero { "true" } else { "false" }) + "}";
+    return j;
+}
+
+pub fn render_device_json(dev: TpmDevice) -> String {
+    let mut j: String = "{";
+    j = j + "\"present\":" + (if dev.present { "true" } else { "false" }) + ",";
+    j = j + "\"device\":\"" + escape_json(dev.device_path) + "\",";
+    j = j + "\"version\":\"" + escape_json(dev.tpm_version) + "\",";
+    j = j + "\"manufacturer\":\"" + escape_json(dev.manufacturer) + "\",";
+    j = j + "\"banks\":\"" + escape_json(dev.banks) + "\"}";
+    return j;
+}
+
+pub fn render_audit_json(res: AttestResult) -> String {
+    let mut j: String = "{";
+    j = j + "\"trusted\":" + (if res.is_trusted { "true" } else { "false" }) + ",";
+    j = j + "\"total\":" + to_string(res.total_pcrs) + ",";
+    j = j + "\"matched\":" + to_string(res.matched_pcrs) + ",";
+    j = j + "\"drifted\":" + to_string(res.drifted_pcrs) + ",";
+    j = j + "\"notes\":\"" + escape_json(res.notes) + "\"}";
+    return j;
+}
